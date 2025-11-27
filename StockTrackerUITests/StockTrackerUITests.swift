@@ -8,32 +8,106 @@
 import XCTest
 
 final class StockTrackerUITests: XCTestCase {
+    var app: XCUIApplication!
 
-    override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
-
-        // In UI tests it is usually best to stop immediately when a failure occurs.
+    override func setUp() {
+        super.setUp()
         continueAfterFailure = false
-
-        // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
+        app = XCUIApplication()
+        app.launch()
     }
 
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
+    override func tearDown() {
+        app = nil
+        super.tearDown()
     }
 
     @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
-        let app = XCUIApplication()
-        app.launch()
+    func testAppLaunches() {
+        XCTAssertTrue(app.buttons["Start"].exists)
+    }
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
+    @MainActor
+    func testConnectionStatusIndicatorExists() {
+        let disconnectedText = app.staticTexts["Disconnected"]
+        XCTAssertTrue(disconnectedText.exists)
+    }
+
+    @MainActor
+    func testStartStopButton() {
+        let startButton = app.buttons["Start"]
+        XCTAssertTrue(startButton.exists)
+
+        startButton.tap()
+
+        let stopButton = app.buttons["Stop"]
+        XCTAssertTrue(stopButton.exists)
+
+        stopButton.tap()
+
+        XCTAssertTrue(app.buttons["Start"].exists)
+    }
+
+    @MainActor
+    func testStockListDisplays() {
+        let list = app.collectionViews.firstMatch
+        XCTAssertTrue(list.exists)
+    }
+
+    @MainActor
+    func testStockSymbolsExist() {
+        let appleCell = app.staticTexts["AAPL"]
+        XCTAssertTrue(appleCell.waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    func testNavigationToDetailView() {
+        let appleCell = app.staticTexts["AAPL"].firstMatch
+        XCTAssertTrue(appleCell.waitForExistence(timeout: 2))
+
+        appleCell.tap()
+
+        let detailTitle = app.navigationBars["AAPL"]
+        XCTAssertTrue(detailTitle.waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    func testDetailViewShowsCurrentPrice() {
+        let appleCell = app.staticTexts["AAPL"].firstMatch
+        XCTAssertTrue(appleCell.waitForExistence(timeout: 2))
+
+        appleCell.tap()
+
+        let currentPriceLabel = app.staticTexts["Current Price"]
+        XCTAssertTrue(currentPriceLabel.exists)
+    }
+
+    @MainActor
+    func testDetailViewShowsAboutSection() {
+        let appleCell = app.staticTexts["AAPL"].firstMatch
+        XCTAssertTrue(appleCell.waitForExistence(timeout: 2))
+
+        appleCell.tap()
+
+        let aboutLabel = app.staticTexts["About"]
+        XCTAssertTrue(aboutLabel.exists)
+    }
+
+    @MainActor
+    func testBackNavigationFromDetailView() {
+        let appleCell = app.staticTexts["AAPL"].firstMatch
+        appleCell.tap()
+
+        let backButton = app.navigationBars.buttons.firstMatch
+        XCTAssertTrue(backButton.exists)
+
+        backButton.tap()
+
+        XCTAssertTrue(app.buttons["Start"].exists)
     }
 
     @MainActor
     func testLaunchPerformance() throws {
-        // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
             XCUIApplication().launch()
         }
