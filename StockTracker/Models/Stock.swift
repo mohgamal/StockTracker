@@ -7,13 +7,13 @@
 
 import Foundation
 
-enum PriceChange: Equatable {
+enum PriceChange: Equatable, Hashable {
     case up
     case down
     case neutral
 }
 
-struct Stock: Identifiable, Equatable {
+struct Stock: Identifiable, Equatable, Hashable {
     let id: String
     let symbol: String
     let name: String
