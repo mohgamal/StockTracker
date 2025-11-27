@@ -10,6 +10,11 @@ import SwiftUI
 struct FeedView: View {
     @EnvironmentObject var viewModel: StockFeedViewModel
     @State private var selectedStock: Stock?
+    @Binding var deepLinkSymbol: String?
+
+    init(deepLinkSymbol: Binding<String?> = .constant(nil)) {
+        self._deepLinkSymbol = deepLinkSymbol
+    }
 
     var body: some View {
         NavigationStack {
@@ -20,6 +25,20 @@ struct FeedView: View {
             .navigationDestination(item: $selectedStock) { stock in
                 StockDetailView(stock: stock)
             }
+            .onChange(of: deepLinkSymbol) { oldValue, newValue in
+                if let symbol = newValue {
+                    handleDeepLink(symbol)
+                    deepLinkSymbol = nil
+                }
+            }
+        }
+    }
+
+    private func handleDeepLink(_ symbol: String) {
+        if let stock = viewModel.getStock(bySymbol: symbol) {
+            selectedStock = stock
+        } else {
+            print("Stock not found for symbol: \(symbol)")
         }
     }
 
@@ -195,6 +214,6 @@ struct StockRowView: View {
 }
 
 #Preview {
-    FeedView()
+    FeedView(deepLinkSymbol: .constant(nil))
         .environmentObject(StockFeedViewModel())
 }
