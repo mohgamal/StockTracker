@@ -29,6 +29,7 @@ class WebSocketService: NSObject, ObservableObject {
     private var urlSession: URLSession?
     private let webSocketURL = URL(string: "wss://ws.postman-echo.com/raw")!
     private var isConnecting = false
+    private var isIntentionalDisconnect = false
     private var pingTimer: Timer?
 
     override init() {
@@ -47,6 +48,7 @@ class WebSocketService: NSObject, ObservableObject {
 
         print("Attempting to connect to WebSocket...")
         isConnecting = true
+        isIntentionalDisconnect = false
         connectionStatus = .connecting
 
         // Cancel any existing connection
@@ -61,16 +63,19 @@ class WebSocketService: NSObject, ObservableObject {
 
     func disconnect() {
         print("Disconnecting WebSocket...")
+        isIntentionalDisconnect = true
         isConnecting = false
         stopPingTimer()
         webSocketTask?.cancel(with: .goingAway, reason: nil)
         webSocketTask = nil
-        connectionStatus = .disconnected
+
+        DispatchQueue.main.async {
+            self.connectionStatus = .disconnected
+        }
     }
 
     func sendPriceUpdate(_ update: PriceUpdate) {
         guard connectionStatus == .connected, let task = webSocketTask else {
-            print("Cannot send: WebSocket not connected (status: \(connectionStatus))")
             return
         }
 
@@ -83,8 +88,10 @@ class WebSocketService: NSObject, ObservableObject {
             task.send(message) { [weak self] error in
                 if let error = error {
                     print("WebSocket send error: \(error.localizedDescription)")
-                    DispatchQueue.main.async {
-                        self?.connectionStatus = .error
+                    if self?.isIntentionalDisconnect == false {
+                        DispatchQueue.main.async {
+                            self?.connectionStatus = .error
+                        }
                     }
                 } else {
                     print("Sent price update for \(update.symbol): $\(update.price)")
@@ -102,17 +109,24 @@ class WebSocketService: NSObject, ObservableObject {
         }
 
         task.receive { [weak self] result in
+            guard let self = self else { return }
+
             switch result {
             case .success(let message):
                 print("Received message from WebSocket")
-                self?.handleMessage(message)
+                self.handleMessage(message)
                 // Continue receiving
-                self?.receiveMessage()
+                self.receiveMessage()
             case .failure(let error):
-                print("WebSocket receive error: \(error)")
-                DispatchQueue.main.async {
-                    self?.connectionStatus = .error
-                    self?.isConnecting = false
+                // Only treat as error if we didn't intentionally disconnect
+                if !self.isIntentionalDisconnect {
+                    print("WebSocket receive error: \(error)")
+                    DispatchQueue.main.async {
+                        self.connectionStatus = .error
+                        self.isConnecting = false
+                    }
+                } else {
+                    print("WebSocket closed (intentional)")
                 }
             }
         }
@@ -142,7 +156,6 @@ class WebSocketService: NSObject, ObservableObject {
                 self.receivedMessage.send(update)
             }
         } catch {
-            print("Failed to decode message: \(error)")
             // The echo might return the exact string we sent, which is fine
         }
     }
@@ -187,11 +200,19 @@ extension WebSocketService: URLSessionWebSocketDelegate {
 
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
         let reasonString = reason.flatMap { String(data: $0, encoding: .utf8) } ?? "No reason"
-        print("❌ WebSocket closed with code: \(closeCode.rawValue), reason: \(reasonString)")
+
+        if isIntentionalDisconnect {
+            print("WebSocket closed (intentional)")
+        } else {
+            print("❌ WebSocket closed with code: \(closeCode.rawValue), reason: \(reasonString)")
+        }
+
         DispatchQueue.main.async {
             self.isConnecting = false
             self.stopPingTimer()
-            self.connectionStatus = .disconnected
+            if !self.isIntentionalDisconnect {
+                self.connectionStatus = .disconnected
+            }
         }
     }
 }
@@ -199,11 +220,14 @@ extension WebSocketService: URLSessionWebSocketDelegate {
 extension WebSocketService: URLSessionTaskDelegate {
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         if let error = error {
-            print("❌ WebSocket task failed with error: \(error)")
-            DispatchQueue.main.async {
-                self.isConnecting = false
-                self.stopPingTimer()
-                self.connectionStatus = .error
+            // Only treat as error if we didn't intentionally disconnect
+            if !isIntentionalDisconnect {
+                print("❌ WebSocket task failed with error: \(error)")
+                DispatchQueue.main.async {
+                    self.isConnecting = false
+                    self.stopPingTimer()
+                    self.connectionStatus = .error
+                }
             }
         }
     }
