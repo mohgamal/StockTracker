@@ -102,6 +102,7 @@ struct FeedView: View {
 
 struct StockRowView: View {
     let stock: Stock
+    @State private var flashColor: Color?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -122,6 +123,13 @@ struct StockRowView: View {
                 Text("$\(stock.currentPrice, specifier: "%.2f")")
                     .font(.headline)
                     .fontWeight(.semibold)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(flashColor ?? .clear)
+                            .opacity(flashColor != nil ? 0.3 : 0)
+                            .padding(.horizontal, -4)
+                            .padding(.vertical, -2)
+                    )
 
                 HStack(spacing: 4) {
                     priceChangeIndicator
@@ -133,6 +141,26 @@ struct StockRowView: View {
             }
         }
         .padding(.vertical, 4)
+        .onChange(of: stock.currentPrice) { oldValue, newValue in
+            triggerFlash(for: stock.priceChange)
+        }
+    }
+
+    private func triggerFlash(for change: PriceChange) {
+        switch change {
+        case .up:
+            flashColor = .green
+        case .down:
+            flashColor = .red
+        case .neutral:
+            return
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            withAnimation(.easeOut(duration: 0.3)) {
+                flashColor = nil
+            }
+        }
     }
 
     private var priceChangeIndicator: some View {

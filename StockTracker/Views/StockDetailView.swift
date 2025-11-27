@@ -10,6 +10,7 @@ import SwiftUI
 struct StockDetailView: View {
     @EnvironmentObject var viewModel: StockFeedViewModel
     let stock: Stock
+    @State private var flashColor: Color?
 
     var currentStock: Stock {
         viewModel.getStock(bySymbol: stock.symbol) ?? stock
@@ -25,6 +26,26 @@ struct StockDetailView: View {
         }
         .navigationTitle(currentStock.symbol)
         .navigationBarTitleDisplayMode(.large)
+        .onChange(of: currentStock.currentPrice) { oldValue, newValue in
+            triggerFlash(for: currentStock.priceChange)
+        }
+    }
+
+    private func triggerFlash(for change: PriceChange) {
+        switch change {
+        case .up:
+            flashColor = .green
+        case .down:
+            flashColor = .red
+        case .neutral:
+            return
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            withAnimation(.easeOut(duration: 0.3)) {
+                flashColor = nil
+            }
+        }
     }
 
     private var priceSection: some View {
@@ -36,6 +57,13 @@ struct StockDetailView: View {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text("$\(currentStock.currentPrice, specifier: "%.2f")")
                     .font(.system(size: 48, weight: .bold))
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(flashColor ?? .clear)
+                            .opacity(flashColor != nil ? 0.3 : 0)
+                            .padding(.horizontal, -8)
+                            .padding(.vertical, -4)
+                    )
 
                 priceChangeIndicator
             }
