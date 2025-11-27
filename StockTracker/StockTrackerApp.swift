@@ -9,9 +9,12 @@ import SwiftUI
 
 @main
 struct StockTrackerApp: App {
+    @StateObject private var viewModel = StockFeedViewModel()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            FeedView()
+                .environmentObject(viewModel)
         }
     }
 }
