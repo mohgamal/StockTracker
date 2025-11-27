@@ -12,6 +12,7 @@ enum ConnectionStatus {
     case connected
     case disconnected
     case connecting
+    case error
 }
 
 struct PriceUpdate: Codable {
@@ -27,29 +28,40 @@ class WebSocketService: NSObject, ObservableObject {
     private var webSocketTask: URLSessionWebSocketTask?
     private var urlSession: URLSession?
     private let webSocketURL = URL(string: "wss://ws.postman-echo.com/raw")!
+    private var isConnecting = false
 
     override init() {
         super.init()
-        urlSession = URLSession(configuration: .default, delegate: self, delegateQueue: OperationQueue())
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 30
+        configuration.timeoutIntervalForResource = 30
+        urlSession = URLSession(configuration: configuration, delegate: self, delegateQueue: OperationQueue())
     }
 
     func connect() {
-        guard connectionStatus != .connected && connectionStatus != .connecting else { return }
+        guard !isConnecting && connectionStatus != .connected else { return }
 
+        isConnecting = true
         connectionStatus = .connecting
+
+        webSocketTask?.cancel(with: .goingAway, reason: nil)
         webSocketTask = urlSession?.webSocketTask(with: webSocketURL)
         webSocketTask?.resume()
         receiveMessage()
     }
 
     func disconnect() {
+        isConnecting = false
         webSocketTask?.cancel(with: .goingAway, reason: nil)
         webSocketTask = nil
         connectionStatus = .disconnected
     }
 
     func sendPriceUpdate(_ update: PriceUpdate) {
-        guard connectionStatus == .connected else { return }
+        guard connectionStatus == .connected else {
+            print("Cannot send: WebSocket not connected")
+            return
+        }
 
         do {
             let encoder = JSONEncoder()
@@ -60,7 +72,9 @@ class WebSocketService: NSObject, ObservableObject {
             webSocketTask?.send(message) { [weak self] error in
                 if let error = error {
                     print("WebSocket send error: \(error)")
-                    self?.connectionStatus = .disconnected
+                    DispatchQueue.main.async {
+                        self?.connectionStatus = .error
+                    }
                 }
             }
         } catch {
@@ -69,6 +83,8 @@ class WebSocketService: NSObject, ObservableObject {
     }
 
     private func receiveMessage() {
+        guard webSocketTask != nil else { return }
+
         webSocketTask?.receive { [weak self] result in
             switch result {
             case .success(let message):
@@ -76,7 +92,10 @@ class WebSocketService: NSObject, ObservableObject {
                 self?.receiveMessage()
             case .failure(let error):
                 print("WebSocket receive error: \(error)")
-                self?.connectionStatus = .disconnected
+                DispatchQueue.main.async {
+                    self?.connectionStatus = .error
+                    self?.isConnecting = false
+                }
             }
         }
     }
@@ -115,14 +134,31 @@ class WebSocketService: NSObject, ObservableObject {
 
 extension WebSocketService: URLSessionWebSocketDelegate {
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
+        print("WebSocket connected successfully")
         DispatchQueue.main.async {
+            self.isConnecting = false
             self.connectionStatus = .connected
         }
     }
 
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
+        let reasonString = reason.flatMap { String(data: $0, encoding: .utf8) } ?? "No reason"
+        print("WebSocket closed with code: \(closeCode.rawValue), reason: \(reasonString)")
         DispatchQueue.main.async {
+            self.isConnecting = false
             self.connectionStatus = .disconnected
+        }
+    }
+}
+
+extension WebSocketService: URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if let error = error {
+            print("WebSocket task failed with error: \(error)")
+            DispatchQueue.main.async {
+                self.isConnecting = false
+                self.connectionStatus = .error
+            }
         }
     }
 }

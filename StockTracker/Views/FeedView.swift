@@ -56,6 +56,8 @@ struct FeedView: View {
             return .red
         case .connecting:
             return .orange
+        case .error:
+            return .red
         }
     }
 
@@ -67,6 +69,8 @@ struct FeedView: View {
             return "Disconnected"
         case .connecting:
             return "Connecting..."
+        case .error:
+            return "Error"
         }
     }
 
