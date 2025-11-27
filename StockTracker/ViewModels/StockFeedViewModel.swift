@@ -96,14 +96,27 @@ class StockFeedViewModel: ObservableObject {
     }
 
     private func startPriceUpdateTimer() {
-        priceUpdateTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            self?.sendPriceUpdates()
+        // Ensure timer is created on main thread
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+
+            self.priceUpdateTimer?.invalidate()
+            self.priceUpdateTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+                self?.sendPriceUpdates()
+            }
+
+            // Add to main run loop to ensure it fires
+            if let timer = self.priceUpdateTimer {
+                RunLoop.main.add(timer, forMode: .common)
+            }
         }
     }
 
     private func stopPriceUpdateTimer() {
-        priceUpdateTimer?.invalidate()
-        priceUpdateTimer = nil
+        DispatchQueue.main.async { [weak self] in
+            self?.priceUpdateTimer?.invalidate()
+            self?.priceUpdateTimer = nil
+        }
     }
 
     private func sendPriceUpdates() {

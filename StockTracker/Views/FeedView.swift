@@ -60,10 +60,12 @@ struct FeedView: View {
             Circle()
                 .fill(statusColor)
                 .frame(width: 12, height: 12)
+                .accessibilityIdentifier("ConnectionStatusIndicator")
 
             Text(statusText)
                 .font(.subheadline)
                 .foregroundColor(.secondary)
+                .accessibilityIdentifier("ConnectionStatusText")
         }
     }
 
@@ -104,6 +106,7 @@ struct FeedView: View {
                 .background(viewModel.isRunning ? Color.red : Color.green)
                 .cornerRadius(8)
         }
+        .accessibilityIdentifier(viewModel.isRunning ? "StopButton" : "StartButton")
     }
 
     private var stockList: some View {
@@ -129,11 +132,13 @@ struct StockRowView: View {
                 Text(stock.symbol)
                     .font(.headline)
                     .fontWeight(.bold)
+                    .accessibilityIdentifier("StockSymbol_\(stock.symbol)")
 
                 Text(stock.name)
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
+                    .accessibilityIdentifier("StockName_\(stock.symbol)")
             }
 
             Spacer()

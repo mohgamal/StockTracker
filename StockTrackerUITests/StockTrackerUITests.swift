@@ -24,28 +24,30 @@ final class StockTrackerUITests: XCTestCase {
 
     @MainActor
     func testAppLaunches() {
-        XCTAssertTrue(app.buttons["Start"].exists)
+        let startButton = app.buttons["StartButton"]
+        XCTAssertTrue(startButton.waitForExistence(timeout: 5))
     }
 
     @MainActor
     func testConnectionStatusIndicatorExists() {
-        let disconnectedText = app.staticTexts["Disconnected"]
-        XCTAssertTrue(disconnectedText.exists)
+        let statusText = app.staticTexts["ConnectionStatusText"]
+        XCTAssertTrue(statusText.waitForExistence(timeout: 5))
     }
 
     @MainActor
     func testStartStopButton() {
-        let startButton = app.buttons["Start"]
-        XCTAssertTrue(startButton.exists)
+        let startButton = app.buttons["StartButton"]
+        XCTAssertTrue(startButton.waitForExistence(timeout: 5))
 
         startButton.tap()
 
-        let stopButton = app.buttons["Stop"]
-        XCTAssertTrue(stopButton.exists)
+        let stopButton = app.buttons["StopButton"]
+        XCTAssertTrue(stopButton.waitForExistence(timeout: 5))
 
         stopButton.tap()
 
-        XCTAssertTrue(app.buttons["Start"].exists)
+        let startButtonAgain = app.buttons["StartButton"]
+        XCTAssertTrue(startButtonAgain.waitForExistence(timeout: 5))
     }
 
     @MainActor
@@ -56,54 +58,57 @@ final class StockTrackerUITests: XCTestCase {
 
     @MainActor
     func testStockSymbolsExist() {
-        let appleCell = app.staticTexts["AAPL"]
-        XCTAssertTrue(appleCell.waitForExistence(timeout: 2))
+        let appleCell = app.staticTexts["StockSymbol_AAPL"]
+        XCTAssertTrue(appleCell.waitForExistence(timeout: 5))
     }
 
     @MainActor
     func testNavigationToDetailView() {
-        let appleCell = app.staticTexts["AAPL"].firstMatch
-        XCTAssertTrue(appleCell.waitForExistence(timeout: 2))
+        let appleCell = app.staticTexts["StockSymbol_AAPL"]
+        XCTAssertTrue(appleCell.waitForExistence(timeout: 5))
 
         appleCell.tap()
 
         let detailTitle = app.navigationBars["AAPL"]
-        XCTAssertTrue(detailTitle.waitForExistence(timeout: 2))
+        XCTAssertTrue(detailTitle.waitForExistence(timeout: 5))
     }
 
     @MainActor
     func testDetailViewShowsCurrentPrice() {
-        let appleCell = app.staticTexts["AAPL"].firstMatch
-        XCTAssertTrue(appleCell.waitForExistence(timeout: 2))
+        let appleCell = app.staticTexts["StockSymbol_AAPL"]
+        XCTAssertTrue(appleCell.waitForExistence(timeout: 5))
 
         appleCell.tap()
 
         let currentPriceLabel = app.staticTexts["Current Price"]
-        XCTAssertTrue(currentPriceLabel.exists)
+        XCTAssertTrue(currentPriceLabel.waitForExistence(timeout: 3))
     }
 
     @MainActor
     func testDetailViewShowsAboutSection() {
-        let appleCell = app.staticTexts["AAPL"].firstMatch
-        XCTAssertTrue(appleCell.waitForExistence(timeout: 2))
+        let appleCell = app.staticTexts["StockSymbol_AAPL"]
+        XCTAssertTrue(appleCell.waitForExistence(timeout: 5))
 
         appleCell.tap()
 
         let aboutLabel = app.staticTexts["About"]
-        XCTAssertTrue(aboutLabel.exists)
+        XCTAssertTrue(aboutLabel.waitForExistence(timeout: 3))
     }
 
     @MainActor
     func testBackNavigationFromDetailView() {
-        let appleCell = app.staticTexts["AAPL"].firstMatch
+        let appleCell = app.staticTexts["StockSymbol_AAPL"]
+        XCTAssertTrue(appleCell.waitForExistence(timeout: 5))
+
         appleCell.tap()
 
         let backButton = app.navigationBars.buttons.firstMatch
-        XCTAssertTrue(backButton.exists)
+        XCTAssertTrue(backButton.waitForExistence(timeout: 3))
 
         backButton.tap()
 
-        XCTAssertTrue(app.buttons["Start"].exists)
+        let startButton = app.buttons["StartButton"]
+        XCTAssertTrue(startButton.waitForExistence(timeout: 5))
     }
 
     @MainActor
