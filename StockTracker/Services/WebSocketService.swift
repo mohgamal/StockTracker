@@ -29,6 +29,7 @@ class WebSocketService: NSObject, ObservableObject {
     private var urlSession: URLSession?
     private let webSocketURL = URL(string: "wss://ws.postman-echo.com/raw")!
     private var isConnecting = false
+    private var pingTimer: Timer?
 
     override init() {
         super.init()
@@ -39,27 +40,37 @@ class WebSocketService: NSObject, ObservableObject {
     }
 
     func connect() {
-        guard !isConnecting && connectionStatus != .connected else { return }
+        guard !isConnecting && connectionStatus != .connected else {
+            print("Already connecting or connected")
+            return
+        }
 
+        print("Attempting to connect to WebSocket...")
         isConnecting = true
         connectionStatus = .connecting
 
+        // Cancel any existing connection
         webSocketTask?.cancel(with: .goingAway, reason: nil)
+
+        // Create new WebSocket task
         webSocketTask = urlSession?.webSocketTask(with: webSocketURL)
         webSocketTask?.resume()
-        receiveMessage()
+
+        // Don't call receiveMessage() here - wait for didOpen delegate
     }
 
     func disconnect() {
+        print("Disconnecting WebSocket...")
         isConnecting = false
+        stopPingTimer()
         webSocketTask?.cancel(with: .goingAway, reason: nil)
         webSocketTask = nil
         connectionStatus = .disconnected
     }
 
     func sendPriceUpdate(_ update: PriceUpdate) {
-        guard connectionStatus == .connected else {
-            print("Cannot send: WebSocket not connected")
+        guard connectionStatus == .connected, let task = webSocketTask else {
+            print("Cannot send: WebSocket not connected (status: \(connectionStatus))")
             return
         }
 
@@ -67,14 +78,16 @@ class WebSocketService: NSObject, ObservableObject {
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
             let data = try encoder.encode(update)
-            let message = URLSessionWebSocketTask.Message.data(data)
+            let message = URLSessionWebSocketTask.Message.string(String(data: data, encoding: .utf8)!)
 
-            webSocketTask?.send(message) { [weak self] error in
+            task.send(message) { [weak self] error in
                 if let error = error {
-                    print("WebSocket send error: \(error)")
+                    print("WebSocket send error: \(error.localizedDescription)")
                     DispatchQueue.main.async {
                         self?.connectionStatus = .error
                     }
+                } else {
+                    print("Sent price update for \(update.symbol): $\(update.price)")
                 }
             }
         } catch {
@@ -83,12 +96,17 @@ class WebSocketService: NSObject, ObservableObject {
     }
 
     private func receiveMessage() {
-        guard webSocketTask != nil else { return }
+        guard let task = webSocketTask else {
+            print("Cannot receive: WebSocket task is nil")
+            return
+        }
 
-        webSocketTask?.receive { [weak self] result in
+        task.receive { [weak self] result in
             switch result {
             case .success(let message):
+                print("Received message from WebSocket")
                 self?.handleMessage(message)
+                // Continue receiving
                 self?.receiveMessage()
             case .failure(let error):
                 print("WebSocket receive error: \(error)")
@@ -103,49 +121,76 @@ class WebSocketService: NSObject, ObservableObject {
     private func handleMessage(_ message: URLSessionWebSocketTask.Message) {
         switch message {
         case .data(let data):
-            do {
-                let decoder = JSONDecoder()
-                decoder.dateDecodingStrategy = .iso8601
-                let update = try decoder.decode(PriceUpdate.self, from: data)
-                DispatchQueue.main.async {
-                    self.receivedMessage.send(update)
-                }
-            } catch {
-                print("Failed to decode message: \(error)")
-            }
+            decodeAndPublish(data)
         case .string(let text):
+            print("Received string message: \(text.prefix(100))...")
             if let data = text.data(using: .utf8) {
-                do {
-                    let decoder = JSONDecoder()
-                    decoder.dateDecodingStrategy = .iso8601
-                    let update = try decoder.decode(PriceUpdate.self, from: data)
-                    DispatchQueue.main.async {
-                        self.receivedMessage.send(update)
-                    }
-                } catch {
-                    print("Failed to decode string message: \(error)")
-                }
+                decodeAndPublish(data)
             }
         @unknown default:
             break
+        }
+    }
+
+    private func decodeAndPublish(_ data: Data) {
+        do {
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let update = try decoder.decode(PriceUpdate.self, from: data)
+            print("Decoded price update for \(update.symbol): $\(update.price)")
+            DispatchQueue.main.async {
+                self.receivedMessage.send(update)
+            }
+        } catch {
+            print("Failed to decode message: \(error)")
+            // The echo might return the exact string we sent, which is fine
+        }
+    }
+
+    private func startPingTimer() {
+        stopPingTimer()
+        pingTimer = Timer.scheduledTimer(withTimeInterval: 20.0, repeats: true) { [weak self] _ in
+            self?.sendPing()
+        }
+    }
+
+    private func stopPingTimer() {
+        pingTimer?.invalidate()
+        pingTimer = nil
+    }
+
+    private func sendPing() {
+        guard connectionStatus == .connected else { return }
+
+        webSocketTask?.sendPing { error in
+            if let error = error {
+                print("WebSocket ping error: \(error)")
+            } else {
+                print("WebSocket ping successful")
+            }
         }
     }
 }
 
 extension WebSocketService: URLSessionWebSocketDelegate {
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
-        print("WebSocket connected successfully")
+        print("✅ WebSocket connected successfully!")
         DispatchQueue.main.async {
             self.isConnecting = false
             self.connectionStatus = .connected
+            // Now that we're connected, start receiving messages
+            self.receiveMessage()
+            // Start ping timer to keep connection alive
+            self.startPingTimer()
         }
     }
 
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
         let reasonString = reason.flatMap { String(data: $0, encoding: .utf8) } ?? "No reason"
-        print("WebSocket closed with code: \(closeCode.rawValue), reason: \(reasonString)")
+        print("❌ WebSocket closed with code: \(closeCode.rawValue), reason: \(reasonString)")
         DispatchQueue.main.async {
             self.isConnecting = false
+            self.stopPingTimer()
             self.connectionStatus = .disconnected
         }
     }
@@ -154,9 +199,10 @@ extension WebSocketService: URLSessionWebSocketDelegate {
 extension WebSocketService: URLSessionTaskDelegate {
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         if let error = error {
-            print("WebSocket task failed with error: \(error)")
+            print("❌ WebSocket task failed with error: \(error)")
             DispatchQueue.main.async {
                 self.isConnecting = false
+                self.stopPingTimer()
                 self.connectionStatus = .error
             }
         }
